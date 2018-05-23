@@ -36,7 +36,7 @@ var (
 
 var (
 	// The address for receiving MN reward
-	MasterNodeRewardAddress          = common.HexToAddress("0x0cad46c40da80796e63aeaedb68a54b16facf044")
+	MasterNodeRewardAddress          = common.HexToAddress("0x3f8a420835eb3eb420f9769d026ef59a86d09180")
 	MasterNodeReward        *big.Int = big.NewInt(0) // 38e+18 is too big for initializing, setting it later in makeConfigNode()
 	MasterNodeRewardString           = "38000000000000000000"
 )
