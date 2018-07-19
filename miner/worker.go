@@ -98,9 +98,9 @@ type worker struct {
 	mu sync.Mutex
 
 	// update loop
-	mux          *event.TypeMux
-	txCh         chan core.TxPreEvent
-	txSub        event.Subscription
+	mux *event.TypeMux
+	//txCh         chan core.TxPreEvent
+	//txSub        event.Subscription
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 	chainSideCh  chan core.ChainSideEvent
@@ -133,11 +133,11 @@ type worker struct {
 
 func newWorker(config *params.ChainConfig, engine consensus.Engine, coinbase common.Address, eth Backend, mux *event.TypeMux) *worker {
 	worker := &worker{
-		config:         config,
-		engine:         engine,
-		eth:            eth,
-		mux:            mux,
-		txCh:           make(chan core.TxPreEvent, txChanSize),
+		config: config,
+		engine: engine,
+		eth:    eth,
+		mux:    mux,
+		//txCh:           make(chan core.TxPreEvent, txChanSize),
 		chainHeadCh:    make(chan core.ChainHeadEvent, chainHeadChanSize),
 		chainSideCh:    make(chan core.ChainSideEvent, chainSideChanSize),
 		chainDb:        eth.ChainDb(),
@@ -152,7 +152,7 @@ func newWorker(config *params.ChainConfig, engine consensus.Engine, coinbase com
 
 	if !config.IsQuorum {
 		// Subscribe TxPreEvent for tx pool
-		worker.txSub = eth.TxPool().SubscribeTxPreEvent(worker.txCh)
+		//worker.txSub = eth.TxPool().SubscribeTxPreEvent(worker.txCh)
 		// Subscribe events for blockchain
 		worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 		worker.chainSideSub = eth.BlockChain().SubscribeChainSideEvent(worker.chainSideCh)
@@ -248,7 +248,7 @@ func (self *worker) unregister(agent Agent) {
 }
 
 func (self *worker) update() {
-	defer self.txSub.Unsubscribe()
+	//defer self.txSub.Unsubscribe()
 	defer self.chainHeadSub.Unsubscribe()
 	defer self.chainSideSub.Unsubscribe()
 
@@ -269,21 +269,21 @@ func (self *worker) update() {
 			self.uncleMu.Unlock()
 
 		// Handle TxPreEvent
-		case ev := <-self.txCh:
-			// Apply transaction to the pending state if we're not mining
-			if atomic.LoadInt32(&self.mining) == 0 {
-				self.currentMu.Lock()
-				acc, _ := types.Sender(self.current.signer, ev.Tx)
-				txs := map[common.Address]types.Transactions{acc: {ev.Tx}}
-				txset := types.NewTransactionsByPriceAndNonce(self.current.signer, txs)
+		// case ev := <-self.txCh:
+		// 	// Apply transaction to the pending state if we're not mining
+		// 	if atomic.LoadInt32(&self.mining) == 0 {
+		// 		self.currentMu.Lock()
+		// 		acc, _ := types.Sender(self.current.signer, ev.Tx)
+		// 		txs := map[common.Address]types.Transactions{acc: {ev.Tx}}
+		// 		txset := types.NewTransactionsByPriceAndNonce(self.current.signer, txs)
 
-				self.current.commitTransactions(self.mux, txset, self.chain, self.coinbase)
-				self.currentMu.Unlock()
-			}
+		// 		self.current.commitTransactions(self.mux, txset, self.chain, self.coinbase)
+		// 		self.currentMu.Unlock()
+		// 	}
 
 		// System stopped
-		case <-self.txSub.Err():
-			return
+		// case <-self.txSub.Err():
+		// 	return
 		case <-self.chainHeadSub.Err():
 			return
 		case <-self.chainSideSub.Err():
