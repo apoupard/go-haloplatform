@@ -48,7 +48,7 @@ const (
 	softResponseLimit = 2 * 1024 * 1024 // Target maximum size of returned blocks, headers or node data.
 	estHeaderRlpSize  = 500             // Approximate size of an RLP encoded block header
 
-	// txChanSize is the size of channel listening to TxPreEvent.
+	// txChanSize is the size of channel listening to NewTxsEvent.
 	// The number is referenced from the size of tx pool.
 	txChanSize = 4096
 )
@@ -94,8 +94,8 @@ type ProtocolManager struct {
 	p2pServer *p2p.Server // Initialized in start()
 
 	eventMux      *event.TypeMux
-	txCh          chan core.TxPreEvent
-	txSub         event.Subscription
+	txsCh         chan core.NewTxsEvent
+	txsSub        event.Subscription
 	minedBlockSub *event.TypeMuxSubscription
 	vdtbBlockSub  *event.TypeMuxSubscription
 
@@ -237,8 +237,8 @@ func (pm *ProtocolManager) Start(maxPeers int, p2pServer *p2p.Server) {
 	pm.maxPeers = maxPeers
 
 	// broadcast transactions
-	pm.txCh = make(chan core.TxPreEvent, txChanSize)
-	pm.txSub = pm.txpool.SubscribeTxPreEvent(pm.txCh)
+	pm.txsCh = make(chan core.NewTxsEvent, txChanSize)
+	pm.txsSub = pm.txpool.SubscribeNewTxsEvent(pm.txsCh)
 	go pm.txBroadcastLoop()
 
 	if !pm.raftMode {
@@ -272,7 +272,7 @@ func (pm *ProtocolManager) Start(maxPeers int, p2pServer *p2p.Server) {
 func (pm *ProtocolManager) Stop() {
 	log.Info("Stopping Ethereum protocol")
 
-	pm.txSub.Unsubscribe() // quits txBroadcastLoop
+	pm.txsSub.Unsubscribe() // quits txBroadcastLoop
 	if !pm.raftMode {
 		pm.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
 	} else {
@@ -807,7 +807,7 @@ func (pm *ProtocolManager) BroadcastBlock(block *types.Block, propagate bool) {
 		// Send the block to a subset of our peers
 		transfer := peers[:int(math.Sqrt(float64(len(peers))))]
 		for _, peer := range transfer {
-			peer.SendNewBlock(block, td)
+			peer.AsyncSendNewBlock(block, td)
 		}
 		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return
@@ -815,7 +815,7 @@ func (pm *ProtocolManager) BroadcastBlock(block *types.Block, propagate bool) {
 	// Otherwise if the block is indeed in out own chain, announce it
 	if pm.blockchain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
-			peer.SendNewBlockHashes([]common.Hash{hash}, []uint64{block.NumberU64()})
+			peer.AsyncSendNewBlockHash(block)
 		}
 		log.Trace("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 	}
@@ -836,58 +836,60 @@ func (pm *ProtocolManager) BroadcastBlock2NonRaft(block *types.Block) {
 	// Send the block to a subset of our peers
 	// TODO:transfer := peers[:int(math.Sqrt(float64(len(peers))))]
 	for _, peer := range peers {
-		peer.SendNewBlock(block, td)
+		peer.AsyncSendNewBlock(block, td)
 	}
 }
 
-// BroadcastTx will propagate a transaction to all peers which are not known to
+// BroadcastTxs will propagate a batch of transactions to all peers which are not known to
 // already have the given transaction.
-func (pm *ProtocolManager) BroadcastTx(hash common.Hash, tx *types.Transaction) {
-	// Broadcast transaction to a batch of peers not knowing about it
-	peers := pm.peers.PeersWithoutTx(hash)
-	//FIXME include this again: peers = peers[:int(math.Sqrt(float64(len(peers))))]
-	// NOTE: Raft-based consensus currently assumes that geth broadcasts
-	// transactions to all peers in the network. A previous comment here
-	// indicated that this logic might change in the future to only send to a
-	// subset of peers. If this change occurs upstream, a merge conflict should
-	// arise here, and we should add logic to send to *all* peers in raft mode.
-	for _, peer := range peers {
-		peer.SendTransactions(types.Transactions{tx})
+func (pm *ProtocolManager) BroadcastTxs(txs types.Transactions) {
+	var txset = make(map[*peer]types.Transactions)
+
+	// Broadcast transactions to a batch of peers not knowing about it
+	for _, tx := range txs {
+		peers := pm.peers.PeersWithoutTx(tx.Hash())
+		for _, peer := range peers {
+			txset[peer] = append(txset[peer], tx)
+		}
+		log.Trace("Broadcast transaction", "hash", tx.Hash(), "recipients", len(peers))
 	}
-	log.Trace("Broadcast transaction", "hash", hash, "recipients", len(peers))
+	// FIXME include this again: peers = peers[:int(math.Sqrt(float64(len(peers))))]
+	for peer, txs := range txset {
+		peer.AsyncSendTransactions(txs)
+	}
 }
 
 // Mined broadcast loop
-func (self *ProtocolManager) minedBroadcastLoop() {
+func (pm *ProtocolManager) minedBroadcastLoop() {
 	// automatically stops if unsubscribe
-	for obj := range self.minedBlockSub.Chan() {
+	for obj := range pm.minedBlockSub.Chan() {
 		switch ev := obj.Data.(type) {
 		case core.NewMinedBlockEvent:
-			self.BroadcastBlock(ev.Block, true)  // First propagate block to peers
-			self.BroadcastBlock(ev.Block, false) // Only then announce to the rest
+			pm.BroadcastBlock(ev.Block, true)  // First propagate block to peers
+			pm.BroadcastBlock(ev.Block, false) // Only then announce to the rest
 		}
 	}
 }
 
 // VDTB broadcast loop for non-Raft nodes (regular node and miner node)
-func (self *ProtocolManager) vdtbNonRaftBroadcastLoop() {
+func (pm *ProtocolManager) vdtbNonRaftBroadcastLoop() {
 	// automatically stops if unsubscribe
-	for obj := range self.vdtbBlockSub.Chan() {
+	for obj := range pm.vdtbBlockSub.Chan() {
 		switch ev := obj.Data.(type) {
 		case core.NewVDTBBlockEvent:
-			self.BroadcastBlock2NonRaft(ev.Block)
+			pm.BroadcastBlock2NonRaft(ev.Block)
 		}
 	}
 }
 
-func (self *ProtocolManager) txBroadcastLoop() {
+func (pm *ProtocolManager) txBroadcastLoop() {
 	for {
 		select {
-		case event := <-self.txCh:
-			self.BroadcastTx(event.Tx.Hash(), event.Tx)
+		case event := <-pm.txsCh:
+			pm.BroadcastTxs(event.Txs)
 
 		// Err() channel will be closed when unsubscribing.
-		case <-self.txSub.Err():
+		case <-pm.txsSub.Err():
 			return
 		}
 	}

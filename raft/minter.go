@@ -38,6 +38,13 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+const (
+
+	// txChanSize is the size of channel listening to NewTxsEvent.
+	// The number is referenced from the size of tx pool.
+	txChanSize = 4096
+)
+
 // Current state information for building the next block
 type work struct {
 	config       *params.ChainConfig
@@ -64,8 +71,8 @@ type minter struct {
 	invalidRaftOrderingChan chan InvalidRaftOrdering
 	chainHeadChan           chan core.ChainHeadEvent
 	chainHeadSub            event.Subscription
-	txPreChan               chan core.TxPreEvent
-	txPreSub                event.Subscription
+	txsCh                   chan core.NewTxsEvent
+	txsSub                  event.Subscription
 
 	// Transactions throttling parameters
 	maxTxsPerBlock   int
@@ -91,7 +98,7 @@ func newMinter(config *params.ChainConfig, eth *RaftService, blockTime time.Dura
 
 		invalidRaftOrderingChan: make(chan InvalidRaftOrdering, 1),
 		chainHeadChan:           make(chan core.ChainHeadEvent, 1),
-		txPreChan:               make(chan core.TxPreEvent, 4096),
+		txsCh:                   make(chan core.NewTxsEvent, txChanSize),
 
 		maxTxsPerBlock:         maxTxsPerBlock,
 		maxTxsPerAccount:       maxTxsPerAccount,
@@ -106,7 +113,7 @@ func newMinter(config *params.ChainConfig, eth *RaftService, blockTime time.Dura
 	minter.isRewardStarted = minter.rewardStartTimestamp.Before(time.Now())
 
 	minter.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(minter.chainHeadChan)
-	minter.txPreSub = eth.TxPool().SubscribeTxPreEvent(minter.txPreChan)
+	minter.txsSub = eth.TxPool().SubscribeNewTxsEvent(minter.txsCh)
 
 	minter.speculativeChain.clear(minter.chain.CurrentBlock())
 
@@ -169,7 +176,7 @@ func (minter *minter) updateSpeculativeChainPerInvalidOrdering(headBlock *types.
 
 func (minter *minter) eventLoop() {
 	defer minter.chainHeadSub.Unsubscribe()
-	defer minter.txPreSub.Unsubscribe()
+	defer minter.txsSub.Unsubscribe()
 
 	for {
 		select {
@@ -192,7 +199,7 @@ func (minter *minter) eventLoop() {
 				minter.mu.Unlock()
 			}
 
-		case <-minter.txPreChan:
+		case <-minter.txsCh:
 			if atomic.LoadInt32(&minter.minting) == 1 {
 				minter.requestMinting()
 			}
@@ -206,7 +213,7 @@ func (minter *minter) eventLoop() {
 		// system stopped
 		case <-minter.chainHeadSub.Err():
 			return
-		case <-minter.txPreSub.Err():
+		case <-minter.txsSub.Err():
 			return
 		}
 	}
