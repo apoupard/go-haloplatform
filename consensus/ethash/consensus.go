@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	set "gopkg.in/fatih/set.v0"
 )
@@ -79,6 +80,7 @@ func (ethash *Ethash) Author(header *types.Header) (common.Address, error) {
 func (ethash *Ethash) VerifyHeader(chain consensus.ChainReader, header *types.Header, seal bool) error {
 	// If we're running a full engine faking, accept any input as valid
 	if ethash.config.PowMode == ModeFullFake {
+		log.Error("############# Go here 1")
 		return nil
 	}
 	// Short circuit if the header is known, or it's parent not
@@ -100,6 +102,7 @@ func (ethash *Ethash) VerifyHeader(chain consensus.ChainReader, header *types.He
 func (ethash *Ethash) VerifyHeaders(chain consensus.ChainReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
 	// If we're running a full engine faking, accept any input as valid
 	if ethash.config.PowMode == ModeFullFake || len(headers) == 0 {
+		log.Error("############# Go here 2")
 		abort, results := make(chan struct{}), make(chan error, len(headers))
 		for i := 0; i < len(headers); i++ {
 			results <- nil
@@ -492,6 +495,7 @@ func (ethash *Ethash) VerifySeal(chain consensus.ChainReader, header *types.Head
 
 	// If we're running a fake PoW, accept any seal as valid
 	if ethash.config.PowMode == ModeFake || ethash.config.PowMode == ModeFullFake {
+		log.Error("############# Go here 3")
 		time.Sleep(ethash.fakeDelay)
 		if ethash.fakeFail == header.Number.Uint64() {
 			return errInvalidPoW
