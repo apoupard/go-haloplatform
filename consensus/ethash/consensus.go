@@ -357,53 +357,56 @@ func calcDifficultyByzantium(time uint64, parent *types.Header) *big.Int {
 	//         (parent_diff / 2048 * max((2 if len(parent.uncles) else 1) - ((timestamp - parent.timestamp) // 9), -99))
 	//        ) + 2^(periodCount - 2)
 
-	bigTime := new(big.Int).SetUint64(time)
-	bigParentTime := new(big.Int).Set(parent.Time)
+	/// Always use Difficulty=1 in Halo network
+	return big1
 
-	// holds intermediate values to make the algo easier to read & audit
-	x := new(big.Int)
-	y := new(big.Int)
+	// bigTime := new(big.Int).SetUint64(time)
+	// bigParentTime := new(big.Int).Set(parent.Time)
 
-	// (2 if len(parent_uncles) else 1) - (block_timestamp - parent_timestamp) // 9
-	x.Sub(bigTime, bigParentTime)
-	x.Div(x, big9)
-	if parent.UncleHash == types.EmptyUncleHash {
-		x.Sub(big1, x)
-	} else {
-		x.Sub(big2, x)
-	}
-	// max((2 if len(parent_uncles) else 1) - (block_timestamp - parent_timestamp) // 9, -99)
-	if x.Cmp(bigMinus99) < 0 {
-		x.Set(bigMinus99)
-	}
-	// parent_diff + (parent_diff / 2048 * max((2 if len(parent.uncles) else 1) - ((timestamp - parent.timestamp) // 9), -99))
-	y.Div(parent.Difficulty, params.DifficultyBoundDivisor)
-	x.Mul(y, x)
-	x.Add(parent.Difficulty, x)
+	// // holds intermediate values to make the algo easier to read & audit
+	// x := new(big.Int)
+	// y := new(big.Int)
 
-	// minimum difficulty can ever be (before exponential factor)
-	if x.Cmp(params.MinimumDifficulty) < 0 {
-		x.Set(params.MinimumDifficulty)
-	}
-	// calculate a fake block numer for the ice-age delay:
-	//   https://github.com/ethereum/EIPs/pull/669
-	//   fake_block_number = min(0, block.number - 3_000_000
-	fakeBlockNumber := new(big.Int)
-	if parent.Number.Cmp(big2999999) >= 0 {
-		fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, big2999999) // Note, parent is 1 less than the actual block number
-	}
-	// for the exponential factor
-	periodCount := fakeBlockNumber
-	periodCount.Div(periodCount, expDiffPeriod)
+	// // (2 if len(parent_uncles) else 1) - (block_timestamp - parent_timestamp) // 9
+	// x.Sub(bigTime, bigParentTime)
+	// x.Div(x, big9)
+	// if parent.UncleHash == types.EmptyUncleHash {
+	// 	x.Sub(big1, x)
+	// } else {
+	// 	x.Sub(big2, x)
+	// }
+	// // max((2 if len(parent_uncles) else 1) - (block_timestamp - parent_timestamp) // 9, -99)
+	// if x.Cmp(bigMinus99) < 0 {
+	// 	x.Set(bigMinus99)
+	// }
+	// // parent_diff + (parent_diff / 2048 * max((2 if len(parent.uncles) else 1) - ((timestamp - parent.timestamp) // 9), -99))
+	// y.Div(parent.Difficulty, params.DifficultyBoundDivisor)
+	// x.Mul(y, x)
+	// x.Add(parent.Difficulty, x)
 
-	// the exponential factor, commonly referred to as "the bomb"
-	// diff = diff + 2^(periodCount - 2)
-	if periodCount.Cmp(big1) > 0 {
-		y.Sub(periodCount, big2)
-		y.Exp(big2, y, nil)
-		x.Add(x, y)
-	}
-	return x
+	// // minimum difficulty can ever be (before exponential factor)
+	// if x.Cmp(params.MinimumDifficulty) < 0 {
+	// 	x.Set(params.MinimumDifficulty)
+	// }
+	// // calculate a fake block numer for the ice-age delay:
+	// //   https://github.com/ethereum/EIPs/pull/669
+	// //   fake_block_number = min(0, block.number - 3_000_000
+	// fakeBlockNumber := new(big.Int)
+	// if parent.Number.Cmp(big2999999) >= 0 {
+	// 	fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, big2999999) // Note, parent is 1 less than the actual block number
+	// }
+	// // for the exponential factor
+	// periodCount := fakeBlockNumber
+	// periodCount.Div(periodCount, expDiffPeriod)
+
+	// // the exponential factor, commonly referred to as "the bomb"
+	// // diff = diff + 2^(periodCount - 2)
+	// if periodCount.Cmp(big1) > 0 {
+	// 	y.Sub(periodCount, big2)
+	// 	y.Exp(big2, y, nil)
+	// 	x.Add(x, y)
+	// }
+	// return x
 }
 
 // calcDifficultyHomestead is the difficulty adjustment algorithm. It returns
