@@ -381,7 +381,7 @@ func (minter *minter) mintNewBlock() {
 	}
 	// commit state root after all state transitions.
 	ethash.AccumulateRewards(minter.chain.Config(), work.publicState, header, nil)
-	header.Root = work.publicState.IntermediateRoot(minter.chain.Config().IsEIP158(work.header.Number))
+	header.Root = work.publicState.IntermediateRoot(true)
 
 	// NOTE: < QuorumChain creates a signature here and puts it in header.Extra. >
 
