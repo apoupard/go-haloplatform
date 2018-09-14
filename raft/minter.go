@@ -284,6 +284,7 @@ func (minter *minter) createWork(rewardAddress common.Address) *work {
 		Time:       big.NewInt(tstamp),
 	}
 
+	log.Error("############## createWork", "parent", parent)
 	publicState, privateState, err := minter.chain.StateAt(parent.Root())
 	if err != nil {
 		panic(fmt.Sprint("failed to get parent state: ", err))

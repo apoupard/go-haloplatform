@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
 	lru "github.com/hashicorp/golang-lru"
 )
@@ -95,6 +96,8 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
+	log.Error("################### Open trie", "hash", root)
+
 	for i := len(db.pastTries) - 1; i >= 0; i-- {
 		if db.pastTries[i].Hash() == root {
 			return cachedTrie{db.pastTries[i].Copy(), db}, nil
@@ -110,6 +113,8 @@ func (db *cachingDB) OpenTrie(root common.Hash) (Trie, error) {
 func (db *cachingDB) pushTrie(t *trie.SecureTrie) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+
+	log.Error("################### Push trie", "hash", t.Hash())
 
 	if len(db.pastTries) >= maxPastTries {
 		copy(db.pastTries, db.pastTries[1:])
